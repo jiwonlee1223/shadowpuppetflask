@@ -1,15 +1,16 @@
 """
 손 탐지 모듈
-OpenCV 기반 피부색 탐지를 사용하여 실시간으로 손을 탐지합니다.
+MediaPipe Hands를 사용하여 실시간으로 손을 탐지합니다.
 """
 import cv2
 import numpy as np
+import mediapipe as mp
 
 
 class HandDetector:
     """
     실시간 손 탐지 클래스
-    - OpenCV 피부색 탐지 기반
+    - MediaPipe Hands 기반 (21개 손 랜드마크)
     - 손바닥 중심 좌표 추출
     - 충돌 감지
     """
@@ -18,13 +19,19 @@ class HandDetector:
         """
         초기화
         """
-        # 피부색 범위 (HSV)
-        self.lower_skin = np.array([0, 20, 70], dtype=np.uint8)
-        self.upper_skin = np.array([20, 255, 255], dtype=np.uint8)
+        # MediaPipe Hands 초기화
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=2,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+        self.mp_drawing = mp.solutions.drawing_utils
         
     def detect(self, frame):
         """
-        프레임에서 손 탐지 (피부색 기반)
+        프레임에서 손 탐지 (MediaPipe 기반)
         
         Args:
             frame: 입력 프레임 (BGR)
@@ -33,97 +40,82 @@ class HandDetector:
             dict: {
                 'hands_found': bool - 손을 찾았는지 여부
                 'hand_centers': list - 손바닥 중심 좌표 리스트 [(x, y), ...]
-                'landmarks': list - 빈 리스트 (호환성)
+                'landmarks': list - 손 랜드마크 리스트
             }
         """
-        # BGR to HSV
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        # BGR to RGB (MediaPipe는 RGB 사용)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        # 피부색 마스크 생성
-        mask = cv2.inRange(hsv, self.lower_skin, self.upper_skin)
-        
-        # 노이즈 제거
-        kernel = np.ones((5, 5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        
-        # 가우시안 블러
-        mask = cv2.GaussianBlur(mask, (5, 5), 0)
-        
-        # 윤곽선 찾기
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # 손 탐지
+        results = self.hands.process(rgb_frame)
         
         hand_centers = []
+        landmarks_list = []
         
-        if contours:
-            # 가장 큰 2개 윤곽선을 손으로 간주
-            sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
+        if results.multi_hand_landmarks:
+            h, w, _ = frame.shape
             
-            for contour in sorted_contours:
-                area = cv2.contourArea(contour)
+            for hand_landmarks in results.multi_hand_landmarks:
+                # 손바닥 중심 계산 (손목~중지 MCP 중간)
+                # Landmark 0: 손목 (WRIST)
+                # Landmark 9: 중지 MCP (MIDDLE_FINGER_MCP)
+                wrist = hand_landmarks.landmark[0]
+                middle_mcp = hand_landmarks.landmark[9]
                 
-                # 최소 면적 필터 (손 크기)
-                if area > 3000:
-                    # 윤곽선 중심 계산
-                    M = cv2.moments(contour)
-                    if M['m00'] != 0:
-                        cx = int(M['m10'] / M['m00'])
-                        cy = int(M['m01'] / M['m00'])
-                        hand_centers.append((cx, cy))
+                # 손바닥 중심 좌표
+                cx = int((wrist.x + middle_mcp.x) / 2 * w)
+                cy = int((wrist.y + middle_mcp.y) / 2 * h)
+                
+                hand_centers.append((cx, cy))
+                landmarks_list.append(hand_landmarks)
         
         return {
             'hands_found': len(hand_centers) > 0,
             'hand_centers': hand_centers,
-            'landmarks': []  # 호환성을 위한 빈 리스트
+            'landmarks': landmarks_list
         }
     
     def check_collision(self, hand_centers, rabbit_corners, rabbit_center=None):
         """
-        손과 토끼 영역의 충돌 감지
+        손과 토끼 애니메이션 충돌 감지
         
         Args:
             hand_centers: 손바닥 중심 좌표 리스트 [(x, y), ...]
-            rabbit_corners: 토끼 영역의 4개 코너 [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-            rabbit_center: 토끼 중심 좌표 (선택적)
+            rabbit_corners: 토끼 프레임 4개 코너 [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
+            rabbit_center: 토끼 중심 좌표 (x, y) (선택적)
         
         Returns:
             dict: {
                 'collision': bool - 충돌 여부
-                'collision_point': tuple - 충돌한 손의 좌표 (x, y) 또는 None
-                'rabbit_center': tuple - 토끼 중심 좌표 (x, y) 또는 None
+                'collision_point': tuple (x, y) - 충돌한 손의 위치
+                'rabbit_center': tuple (x, y) - 토끼 중심
             }
         """
         if not hand_centers or rabbit_corners is None:
             return {
                 'collision': False,
                 'collision_point': None,
-                'rabbit_center': None
+                'rabbit_center': rabbit_center
             }
         
-        # 토끼 영역의 중심 계산
+        # 토끼 중심이 제공되지 않았으면 코너로부터 계산
         if rabbit_center is None:
-            rabbit_center_x = sum([c[0] for c in rabbit_corners]) / 4
-            rabbit_center_y = sum([c[1] for c in rabbit_corners]) / 4
+            rabbit_center_x = sum(corner[0] for corner in rabbit_corners) / 4
+            rabbit_center_y = sum(corner[1] for corner in rabbit_corners) / 4
             rabbit_center = (rabbit_center_x, rabbit_center_y)
-        else:
-            rabbit_center_x, rabbit_center_y = rabbit_center
-        
-        # 토끼 영역의 바운딩 박스 계산
-        x_coords = [c[0] for c in rabbit_corners]
-        y_coords = [c[1] for c in rabbit_corners]
-        
-        min_x = min(x_coords)
-        max_x = max(x_coords)
-        min_y = min(y_coords)
-        max_y = max(y_coords)
         
         # 각 손에 대해 충돌 검사
         for hand_center in hand_centers:
             hx, hy = hand_center
             
-            # 바운딩 박스 내부에 있는지 확인
-            if min_x <= hx <= max_x and min_y <= hy <= max_y:
-                # 충돌 발생! 손이 토끼를 잡음
+            # Point-in-Polygon 테스트 (토끼 프레임 내부인지 확인)
+            # OpenCV의 pointPolygonTest 사용
+            corners_np = np.array(rabbit_corners, dtype=np.float32)
+            distance = cv2.pointPolygonTest(corners_np, (hx, hy), True)
+            
+            # 거리가 0 이상이면 내부 (0: 경계, >0: 내부, <0: 외부)
+            # 손이 토끼 프레임 내부에 있을 때만 충돌로 인식
+            if distance >= 0:  # 프레임 내부 또는 경계
                 return {
                     'collision': True,
                     'collision_point': hand_center,
@@ -133,36 +125,36 @@ class HandDetector:
         return {
             'collision': False,
             'collision_point': None,
-            'rabbit_center': None
+            'rabbit_center': rabbit_center
         }
     
     def draw_hands(self, frame, hand_centers):
         """
-        프레임에 손 중심점 그리기 (디버그용)
+        프레임에 손 위치 그리기 (디버그용)
         
         Args:
-            frame: 입력 프레임 (BGR)
-            hand_centers: 손 중심 좌표 리스트
+            frame: 입력 프레임
+            hand_centers: 손바닥 중심 좌표 리스트
         
         Returns:
-            손 그림이 그려진 프레임
+            프레임 (손 위치 표시됨)
         """
-        for center in hand_centers:
-            # 손 중심에 원 그리기
-            cv2.circle(frame, center, 20, (0, 255, 0), 3)
-            cv2.circle(frame, center, 5, (0, 0, 255), -1)
+        for cx, cy in hand_centers:
+            # 손바닥 중심에 원 그리기
+            cv2.circle(frame, (cx, cy), 15, (0, 255, 0), 3)
+            cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
         
         return frame
     
     def release(self):
         """
-        리소스 해제 (호환성)
+        리소스 해제
         """
-        pass
+        if self.hands:
+            self.hands.close()
     
     def __del__(self):
         """
         소멸자
         """
         self.release()
-
