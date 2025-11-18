@@ -1,0 +1,148 @@
+{% extends "layout.html" %}
+
+{% block title %}Shadow Puppet AR - 메인{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 비디오 섹션 -->
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-video me-2"></i>실시간 AR 뷰
+                </h5>
+            </div>
+            <div class="card-body bg-dark p-0 position-relative">
+                <!-- 원본 비디오 (숨김) -->
+                <video id="webcam" autoplay playsinline style="display: none;"></video>
+                
+                <!-- 캔버스 (웹캠 입력용) -->
+                <canvas id="input-canvas" style="display: none;"></canvas>
+                
+                <!-- 결과 이미지 -->
+                <div class="video-container">
+                    <img id="output-image" src="" alt="AR 결과" class="w-100">
+                    <div id="no-video-overlay" class="no-video-overlay">
+                        <i class="fas fa-camera fa-3x mb-3"></i>
+                        <h4>웹캠 대기 중...</h4>
+                        <p>웹캠 접근을 허용해주세요.</p>
+                    </div>
+                </div>
+                
+                <!-- 상태 오버레이 -->
+                <div class="status-overlay" id="status-overlay">
+                    <span class="badge bg-secondary" id="lock-status">
+                        <i class="fas fa-unlock me-1"></i>잠금 해제
+                    </span>
+                    <span class="badge bg-info ms-2" id="fps-counter">FPS: 0</span>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <button class="btn btn-success btn-sm" id="btn-start">
+                            <i class="fas fa-play me-1"></i>시작
+                        </button>
+                        <button class="btn btn-danger btn-sm" id="btn-stop" disabled>
+                            <i class="fas fa-stop me-1"></i>정지
+                        </button>
+                        <button class="btn btn-warning btn-sm" id="btn-reset">
+                            <i class="fas fa-redo me-1"></i>리셋
+                        </button>
+                    </div>
+                    <div>
+                        <small class="text-muted" id="detection-info">
+                            대기 중...
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 제어 패널 -->
+    <div class="col-lg-4">
+        <!-- 탐지 설정 -->
+        <div class="card shadow mb-3">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0">
+                    <i class="fas fa-sliders-h me-2"></i>탐지 설정
+                </h6>
+            </div>
+            <div class="card-body">
+                <!-- 임계값 설정 -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        진입 임계값 (Threshold Enter)
+                        <small class="text-muted">낮을수록 엄격</small>
+                    </label>
+                    <input type="range" class="form-range" id="threshold-enter" 
+                           min="0.05" max="0.5" step="0.05" value="0.25">
+                    <small class="text-muted" id="threshold-enter-value">0.25</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">
+                        탈출 임계값 (Threshold Exit)
+                        <small class="text-muted">더 관대함</small>
+                    </label>
+                    <input type="range" class="form-range" id="threshold-exit" 
+                           min="0.1" max="1.0" step="0.05" value="0.50">
+                    <small class="text-muted" id="threshold-exit-value">0.50</small>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 명도/채도 조정 -->
+        <div class="card shadow">
+            <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0">
+                    <i class="fas fa-adjust me-2"></i>이미지 조정
+                </h6>
+            </div>
+            <div class="card-body">
+                <!-- 명도 조절 -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        <i class="fas fa-sun me-1"></i>명도 (Brightness)
+                        <small class="text-muted">밝기 조절</small>
+                    </label>
+                    <input type="range" class="form-range" id="brightness" 
+                           min="-100" max="100" step="5" value="0">
+                    <div class="d-flex justify-content-between">
+                        <small class="text-muted">어둡게</small>
+                        <small class="text-muted fw-bold" id="brightness-value">0</small>
+                        <small class="text-muted">밝게</small>
+                    </div>
+                </div>
+                
+                <!-- 채도 조절 -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        <i class="fas fa-palette me-1"></i>채도 (Saturation)
+                        <small class="text-muted">색상 강도 조절</small>
+                    </label>
+                    <input type="range" class="form-range" id="saturation" 
+                           min="-100" max="100" step="5" value="0">
+                    <div class="d-flex justify-content-between">
+                        <small class="text-muted">흑백</small>
+                        <small class="text-muted fw-bold" id="saturation-value">0</small>
+                        <small class="text-muted">선명</small>
+                    </div>
+                </div>
+                
+                <!-- 리셋 버튼 -->
+                <button class="btn btn-secondary btn-sm w-100" id="btn-reset-adjustment">
+                    <i class="fas fa-undo me-1"></i>초기화
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/socket-handler.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% endblock %}
+

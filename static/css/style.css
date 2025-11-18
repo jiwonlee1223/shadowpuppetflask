@@ -1,0 +1,266 @@
+/**
+ * Shadow Puppet AR - 커스텀 스타일시트
+ */
+
+/* 전역 스타일 */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f5f5f5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* 네비게이션 바 */
+.navbar-brand {
+    font-weight: bold;
+    font-size: 1.3rem;
+}
+
+#connection-status {
+    display: flex;
+    align-items: center;
+}
+
+/* 카드 스타일 */
+.card {
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.card-header {
+    border-bottom: none;
+    padding: 1rem 1.5rem;
+}
+
+/* 비디오 컨테이너 */
+.video-container {
+    position: relative;
+    width: 100%;
+    background-color: #000;
+    min-height: 480px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.video-container img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+/* 비디오 없음 오버레이 */
+.no-video-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    z-index: 10;
+}
+
+.no-video-overlay i {
+    opacity: 0.5;
+}
+
+/* 상태 오버레이 */
+.status-overlay {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 5;
+    display: flex;
+    gap: 10px;
+}
+
+.status-overlay .badge {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* 슬라이더 스타일 */
+.form-range {
+    cursor: pointer;
+}
+
+.form-range::-webkit-slider-thumb {
+    cursor: pointer;
+}
+
+.form-range::-moz-range-thumb {
+    cursor: pointer;
+}
+
+/* 버튼 스타일 */
+.btn {
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+/* 라벨 스타일 */
+.form-label {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.form-label small {
+    font-weight: normal;
+}
+
+/* 카드 푸터 */
+.card-footer {
+    background-color: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+}
+
+/* Footer */
+.footer {
+    background-color: #343a40;
+    margin-top: auto;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 992px) {
+    .video-container {
+        min-height: 360px;
+    }
+    
+    .col-lg-4 {
+        margin-top: 1rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1.1rem;
+    }
+    
+    .video-container {
+        min-height: 280px;
+    }
+    
+    .status-overlay {
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+}
+
+/* 애니메이션 */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.badge.bg-success {
+    animation: pulse 2s infinite;
+}
+
+/* 스크롤바 스타일 (선택적) */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* 로딩 스피너 (선택적) */
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #fff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 툴팁 스타일 개선 */
+.tooltip {
+    font-size: 0.875rem;
+}
+
+/* 배지 스타일 */
+.badge {
+    font-weight: 500;
+}
+
+/* 입력 포커스 스타일 */
+.form-range:focus {
+    outline: none;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* 카드 호버 효과 */
+.card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* 텍스트 색상 유틸리티 */
+.text-success {
+    color: #28a745 !important;
+}
+
+.text-muted {
+    color: #6c757d !important;
+}
+
+/* 사용자 선택 방지 (UI 요소) */
+.navbar-brand,
+.card-header,
+.btn,
+.badge {
+    user-select: none;
+}
+
