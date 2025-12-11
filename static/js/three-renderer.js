@@ -60,6 +60,10 @@ class ThreeRenderer {
         this.targetPinchScale = 1.0;    // 목표 핀치 스케일 (부드러운 전환용)
         this.isPinchActive = false;     // 핀치 활성화 상태
         
+        // 검지 따라가기
+        this.isIndexFollowing = false;  // 검지 따라가기 모드인지
+        this.indexTarget = { x: 0, y: 0 }; // 검지 위치
+        
         // 초기화
         this.init();
     }
@@ -177,6 +181,9 @@ class ThreeRenderer {
             if (this.isPinchActive) {
                 state.textContent = '👌 크기 조절 중';
                 state.style.color = '#00ffff';
+            } else if (this.isIndexFollowing) {
+                state.textContent = '☝️ 검지 따라가기';
+                state.style.color = '#ffaa00';
             } else if (this.isRunning) {
                 state.textContent = this.isPalmTarget ? '🖐️ 손바닥으로 이동' : '👆 탭 위치로 이동';
                 state.style.color = '#ffff00';
@@ -195,6 +202,9 @@ class ThreeRenderer {
             if (this.isPinchActive) {
                 gestureEl.textContent = '👌 핀치';
                 gestureEl.style.color = '#00ffff';
+            } else if (this.isIndexFollowing) {
+                gestureEl.textContent = '☝️ 검지';
+                gestureEl.style.color = '#ffaa00';
             } else if (this.isPalmVisible) {
                 gestureEl.textContent = '🖐️ 손바닥';
                 gestureEl.style.color = '#ff66ff';
@@ -730,6 +740,52 @@ class ThreeRenderer {
             this.targetPinchScale = scale;
         }
         // 핀치 비활성화 시 현재 스케일 유지 (부드럽게 고정)
+    }
+    
+    /**
+     * ☝️ 검지 따라가기 업데이트
+     * @param {boolean} isActive - 검지만 펴진 제스처 활성화 여부
+     * @param {number} screenX - 화면 X 좌표 (0~1)
+     * @param {number} screenY - 화면 Y 좌표 (0~1)
+     */
+    updateIndexFollowing(isActive, screenX = 0, screenY = 0) {
+        const wasFollowing = this.isIndexFollowing;
+        this.isIndexFollowing = isActive;
+        
+        if (isActive) {
+            // 검지 위치를 3D 좌표로 변환
+            const targetX = (screenX - 0.5) * 30;  // -15 ~ 15
+            const targetY = -(screenY - 0.5) * 16; // -8 ~ 8 (Y축 반전)
+            
+            // 목표 위치 저장
+            this.indexTarget.x = targetX;
+            this.indexTarget.y = targetY;
+            
+            // 처음 따라가기 시작할 때
+            if (!wasFollowing && !this.isRunning) {
+                console.log('☝️ 검지 따라가기 시작!');
+                this.isRunning = true;
+                this.playAnimation('Run_Forward', 0.2);
+            }
+            
+            // 이동 목표 업데이트
+            this.runTarget.x = targetX;
+            this.runTarget.y = targetY;
+            
+            // 이동 방향에 따라 바라보는 방향 설정
+            const dx = targetX - this.modelPosition.x;
+            if (Math.abs(dx) > 0.5) {
+                this.facingDirection = dx > 0 ? 1 : -1;
+            }
+        } else {
+            // 검지가 사라짐 → 따라가기 중지
+            if (wasFollowing && this.isRunning) {
+                console.log('☝️ 검지 사라짐 → 멈춤');
+                this.isRunning = false;
+                this.facingDirection = 0;
+                this.playAnimation('IdleA', 0.3);
+            }
+        }
     }
     
     /**

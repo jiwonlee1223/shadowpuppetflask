@@ -108,12 +108,27 @@ class HandDetector:
                     palm_center = self._get_palm_center(hand_landmarks, frame.shape[1], frame.shape[0])
                     break
         
+        # 검지만 펴진 제스처 감지 (숫자 1)
+        index_only_detected = False
+        index_only_tip = None
+        
+        if not pinch_result['active'] and not palm_detected and results.multi_hand_landmarks:
+            for i, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                if self._is_index_only(hand_landmarks):
+                    index_only_detected = True
+                    # 검지 끝 좌표
+                    if i < len(index_finger_tips):
+                        index_only_tip = index_finger_tips[i]
+                    break
+        
         # 현재 감지된 제스처 로그 (디버그용)
         gesture = "없음"
         if pinch_result['active']:
             gesture = f"👌 핀치 (스케일: {pinch_result['scale']:.2f}x)"
         elif palm_detected:
             gesture = "🖐️ 손바닥"
+        elif index_only_detected:
+            gesture = "☝️ 검지"
         
         return {
             'hands_found': len(hand_centers) > 0,
@@ -125,6 +140,8 @@ class HandDetector:
             'pinch_active': pinch_result['active'],
             'pinch_scale': pinch_result['scale'],
             'pinch_distance': pinch_result['distance'],
+            'index_only_detected': index_only_detected,
+            'index_only_tip': index_only_tip,
             'gesture': gesture
         }
     
@@ -170,6 +187,33 @@ class HandDetector:
         # 4개 이상의 손가락이 펴져있으면 손바닥
         extended_count = sum(fingers_extended)
         return extended_count >= 4
+    
+    def _is_index_only(self, hand_landmarks):
+        """
+        검지만 펴져있는지 확인 (숫자 1 제스처)
+        
+        Args:
+            hand_landmarks: MediaPipe 손 랜드마크
+        
+        Returns:
+            bool: 검지만 펴져있으면 True
+        """
+        landmarks = hand_landmarks.landmark
+        
+        # 검지: 펴져있어야 함 (TIP이 PIP보다 위)
+        index_extended = landmarks[8].y < landmarks[6].y
+        
+        # 나머지 손가락: 접혀있어야 함 (TIP이 PIP보다 아래)
+        middle_folded = landmarks[12].y > landmarks[10].y
+        ring_folded = landmarks[16].y > landmarks[14].y
+        pinky_folded = landmarks[20].y > landmarks[18].y
+        
+        # 엄지: 접혀있어야 함 (검지 쪽으로 향함)
+        # 엄지 TIP과 검지 MCP 사이 거리가 가까워야 함
+        thumb_folded = abs(landmarks[4].x - landmarks[2].x) < 0.08
+        
+        # 검지만 펴져있고, 나머지는 접혀있으면 True
+        return index_extended and middle_folded and ring_folded and pinky_folded
     
     def _get_palm_center(self, hand_landmarks, width, height):
         """
@@ -399,7 +443,7 @@ class HandDetector:
     
     def draw_landmarks(self, frame, landmarks_list):
         """
-        프레임에 손가락 관절(21개 랜드마크) 그리기
+        프레임에 손가락 관절(21개 랜드마크) 그리기 - 미니멀 스타일
         
         Args:
             frame: 입력 프레임
@@ -426,6 +470,11 @@ class HandDetector:
             (5, 9), (9, 13), (13, 17)
         ]
         
+        # 미니멀 스타일 색상 (흰색/연한 회색)
+        line_color = (220, 220, 220)  # 연한 회색 선
+        joint_color = (255, 255, 255)  # 흰색 관절
+        tip_color = (255, 255, 255)    # 흰색 손가락 끝
+        
         for hand_landmarks in landmarks_list:
             # 랜드마크 좌표 추출
             points = []
@@ -434,20 +483,17 @@ class HandDetector:
                 y = int(landmark.y * h)
                 points.append((x, y))
             
-            # 연결선 그리기 (초록색)
+            # 연결선 그리기 (얇은 흰색 선)
             for start_idx, end_idx in connections:
                 cv2.line(frame, points[start_idx], points[end_idx], 
-                        (0, 255, 0), 2)
+                        line_color, 1, cv2.LINE_AA)
             
-            # 관절 포인트 그리기
+            # 관절 포인트 그리기 (작은 흰색 점)
             for idx, (x, y) in enumerate(points):
-                # 손가락 끝은 빨간색, 나머지는 파란색
                 if idx in [4, 8, 12, 16, 20]:  # 손가락 끝
-                    cv2.circle(frame, (x, y), 6, (0, 0, 255), -1)
-                    cv2.circle(frame, (x, y), 6, (255, 255, 255), 1)
+                    cv2.circle(frame, (x, y), 3, tip_color, -1, cv2.LINE_AA)
                 else:
-                    cv2.circle(frame, (x, y), 4, (255, 100, 0), -1)
-                    cv2.circle(frame, (x, y), 4, (255, 255, 255), 1)
+                    cv2.circle(frame, (x, y), 2, joint_color, -1, cv2.LINE_AA)
         
         return frame
     

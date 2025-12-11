@@ -507,6 +507,15 @@ function handleProcessedFrame(data) {
         } else {
             threeRenderer.updatePinchScale(false, 1.0);
         }
+        
+        // ☝️ 검지 따라가기 업데이트
+        if (hands.index_only_detected && hands.index_only_tip) {
+            const normalizedX = hands.index_only_tip[0] / screenWidth;
+            const normalizedY = hands.index_only_tip[1] / screenHeight;
+            threeRenderer.updateIndexFollowing(true, normalizedX, normalizedY);
+        } else {
+            threeRenderer.updateIndexFollowing(false);
+        }
     }
     
     // 잠금 상태 표시
