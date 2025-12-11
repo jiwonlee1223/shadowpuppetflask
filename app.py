@@ -22,6 +22,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 shape_detector = None
 video_overlay = None
 hand_detector = None
+white_background_mode = False  # 흰색 배경 모드 (손 스켈레톤만 표시)
+mirror_mode = True  # 좌우반전 모드 (거울처럼 보이기)
 
 # 파일 경로
 REFERENCE_IMAGE_PATH = 'files/rabbit reference.png'
@@ -149,6 +151,10 @@ def handle_video_frame(data):
             emit('error', {'message': '프레임 디코딩 실패'})
             return
         
+        # 좌우반전 (거울 모드)
+        if mirror_mode:
+            frame = cv2.flip(frame, 1)
+        
         # 손 탐지
         hand_result = hand_detector.detect(frame)
         
@@ -182,9 +188,14 @@ def handle_video_frame(data):
         # 형태 탐지 (손 충돌 데이터 포함)
         detection_result = shape_detector.detect(frame, hand_collision_data)
         
-        # 결과 프레임 생성: 배경 레이어에 명도/채도 조정 먼저 적용
-        result_frame = frame.copy()
-        result_frame = shape_detector.apply_brightness_saturation(result_frame)
+        # 결과 프레임 생성
+        if white_background_mode:
+            # 흰색 배경 모드: 웹캠 화면 대신 흰색 배경
+            result_frame = np.full_like(frame, 255)  # 흰색 배경
+        else:
+            # 일반 모드: 웹캠 프레임 복사 + 명도/채도 조정
+            result_frame = frame.copy()
+            result_frame = shape_detector.apply_brightness_saturation(result_frame)
         
         # 손가락 관절(랜드마크) 그리기
         if hand_result['landmarks']:
@@ -314,6 +325,50 @@ def handle_set_thresholds(data):
     except Exception as e:
         print(f"임계값 설정 오류: {e}")
         emit('error', {'message': f'임계값 설정 오류: {str(e)}'})
+
+
+@socketio.on('set_white_background')
+def handle_set_white_background(data):
+    """
+    흰색 배경 모드 설정 (웹캠 배경 숨기고 손 스켈레톤만 표시)
+    
+    Args:
+        data: {
+            'enabled': bool
+        }
+    """
+    global white_background_mode
+    
+    try:
+        white_background_mode = data.get('enabled', False)
+        print(f"🎨 흰색 배경 모드: {'활성화' if white_background_mode else '비활성화'}")
+        emit('white_background_updated', {'enabled': white_background_mode})
+        
+    except Exception as e:
+        print(f"흰색 배경 모드 설정 오류: {e}")
+        emit('error', {'message': f'흰색 배경 모드 설정 오류: {str(e)}'})
+
+
+@socketio.on('set_mirror_mode')
+def handle_set_mirror_mode(data):
+    """
+    좌우반전(거울) 모드 설정
+    
+    Args:
+        data: {
+            'enabled': bool
+        }
+    """
+    global mirror_mode
+    
+    try:
+        mirror_mode = data.get('enabled', True)
+        print(f"🪞 거울 모드: {'활성화' if mirror_mode else '비활성화'}")
+        emit('mirror_mode_updated', {'enabled': mirror_mode})
+        
+    except Exception as e:
+        print(f"거울 모드 설정 오류: {e}")
+        emit('error', {'message': f'거울 모드 설정 오류: {str(e)}'})
 
 
 if __name__ == '__main__':

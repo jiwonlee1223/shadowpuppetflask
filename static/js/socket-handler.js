@@ -69,6 +69,16 @@ class SocketHandler {
         this.socket.on('detector_reset', (data) => {
             console.log('감지기가 리셋되었습니다.');
         });
+        
+        // 흰색 배경 모드 업데이트 확인
+        this.socket.on('white_background_updated', (data) => {
+            console.log('🎨 흰색 배경 모드:', data.enabled ? '활성화' : '비활성화');
+        });
+        
+        // 거울 모드 업데이트 확인
+        this.socket.on('mirror_mode_updated', (data) => {
+            console.log('🪞 거울 모드:', data.enabled ? '활성화' : '비활성화');
+        });
     }
     
     /**
@@ -138,6 +148,32 @@ class SocketHandler {
         }
         
         this.socket.emit('reset_detector');
+    }
+    
+    /**
+     * 흰색 배경 모드 설정 (손 스켈레톤만 표시)
+     * @param {boolean} enabled - 활성화 여부
+     */
+    setWhiteBackground(enabled) {
+        if (!this.isConnected) {
+            console.warn('서버에 연결되지 않았습니다.');
+            return;
+        }
+        
+        this.socket.emit('set_white_background', { enabled: enabled });
+    }
+    
+    /**
+     * 거울 모드 설정 (좌우반전)
+     * @param {boolean} enabled - 활성화 여부
+     */
+    setMirrorMode(enabled) {
+        if (!this.isConnected) {
+            console.warn('서버에 연결되지 않았습니다.');
+            return;
+        }
+        
+        this.socket.emit('set_mirror_mode', { enabled: enabled });
     }
     
     /**

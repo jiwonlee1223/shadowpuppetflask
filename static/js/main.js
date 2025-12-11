@@ -20,6 +20,15 @@ let currentFps = 0;
 let adjustmentDebounceTimer = null;
 let thresholdsDebounceTimer = null;
 
+// 흰색 배경 모드 상태
+let whiteBackgroundEnabled = false;
+
+// UI 표시 상태 (q키로 토글)
+let uiVisible = true;
+
+// 거울 모드 상태 (m키로 토글) - 기본 활성화
+let mirrorModeEnabled = true;
+
 // 성능 최적화
 let processingFrame = false;  // 서버 처리 중 플래그
 let frameSkipCounter = 0;     // 프레임 스킵 카운터
@@ -51,6 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 이벤트 리스너 등록
     setupEventListeners();
+    
+    // 키보드 이벤트 리스너 (q키로 UI 토글)
+    setupKeyboardListeners();
     
     // 웹캠 초기화
     initWebcam();
@@ -91,7 +103,7 @@ function initSounds() {
     
     // 잠자는 소리 로드 (루프 재생)
     meowSleepingSound = new Audio('/static/sounds/meow-purring.mp3');
-    meowSleepingSound.volume = 0.5;
+    meowSleepingSound.volume = 1.0;  // 최대 볼륨 (기존 0.5에서 증가)
     meowSleepingSound.loop = true;  // 반복 재생
     
     console.log(`🔊 ${meowSounds.length}개의 사운드 + 잠자는 소리 로드 완료`);
@@ -191,6 +203,84 @@ function setupEventListeners() {
     
     // 초기화 버튼
     document.getElementById('btn-reset-adjustment').addEventListener('click', resetAdjustment);
+    
+    // 흰색 배경(스켈레톤) 모드 토글 버튼
+    document.getElementById('btn-white-bg').addEventListener('click', toggleWhiteBackground);
+}
+
+/**
+ * 키보드 이벤트 리스너 설정
+ */
+function setupKeyboardListeners() {
+    document.addEventListener('keydown', (e) => {
+        // q 또는 Q 키로 UI 토글
+        if (e.key === 'q' || e.key === 'Q') {
+            toggleUI();
+        }
+        // m 또는 M 키로 거울 모드 토글
+        if (e.key === 'm' || e.key === 'M') {
+            toggleMirrorMode();
+        }
+    });
+    
+    console.log('⌨️ 키보드 단축키 활성화: Q=UI 토글, M=거울 모드 토글');
+}
+
+/**
+ * UI 토글 (디버그 패널 + 컨트롤 바)
+ */
+function toggleUI() {
+    uiVisible = !uiVisible;
+    
+    // 컨트롤 바
+    const controlBar = document.querySelector('.control-bar');
+    if (controlBar) {
+        controlBar.style.display = uiVisible ? 'flex' : 'none';
+    }
+    
+    // 디버그 패널 (Three.js 렌더러에서 생성)
+    const debugPanel = document.getElementById('cat-debug-panel');
+    if (debugPanel) {
+        debugPanel.style.display = uiVisible ? 'block' : 'none';
+    }
+    
+    console.log(`🎮 UI ${uiVisible ? '표시' : '숨김'} (Q키로 토글)`);
+}
+
+/**
+ * 거울 모드 토글 (좌우반전)
+ */
+function toggleMirrorMode() {
+    mirrorModeEnabled = !mirrorModeEnabled;
+    
+    // 서버에 전송
+    socketHandler.setMirrorMode(mirrorModeEnabled);
+    
+    console.log(`🪞 거울 모드 ${mirrorModeEnabled ? '활성화' : '비활성화'} (M키로 토글)`);
+}
+
+/**
+ * 흰색 배경 모드 토글
+ */
+function toggleWhiteBackground() {
+    whiteBackgroundEnabled = !whiteBackgroundEnabled;
+    
+    const btn = document.getElementById('btn-white-bg');
+    
+    if (whiteBackgroundEnabled) {
+        btn.classList.remove('btn-outline-light');
+        btn.classList.add('btn-light');
+        btn.innerHTML = '<i class="fas fa-hand-paper me-1"></i>스켈레톤 ON';
+        console.log('🎨 스켈레톤 모드 활성화: 흰 배경 + 손만 표시');
+    } else {
+        btn.classList.remove('btn-light');
+        btn.classList.add('btn-outline-light');
+        btn.innerHTML = '<i class="fas fa-hand-paper me-1"></i>스켈레톤 모드';
+        console.log('🎨 스켈레톤 모드 비활성화: 웹캠 배경 표시');
+    }
+    
+    // 서버에 전송
+    socketHandler.setWhiteBackground(whiteBackgroundEnabled);
 }
 
 /**

@@ -112,8 +112,8 @@ class ThreeRenderer {
         // 조명 추가
         this.addLights();
         
-        // 디버그 헬퍼 추가 (경계 표시)
-        this.addDebugHelpers();
+        // 디버그 헬퍼 비활성화 (경계선, 축, 구체 제거)
+        // this.addDebugHelpers();
         
         // 윈도우 리사이즈 핸들러
         window.addEventListener('resize', () => this.onWindowResize());
