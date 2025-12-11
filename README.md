@@ -90,7 +90,7 @@ pip install -r requirements.txt
 **Windows:**
 ```bash
 cd shadowpuppetflask
-venv\Scripts\activate
+.\venv\Scripts\Activate.ps1
 ```
 
 **macOS/Linux:**

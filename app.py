@@ -156,6 +156,10 @@ def handle_video_frame(data):
         temp_detection = shape_detector.detect(frame)
         hand_collision_data = None
         
+        # 탭 감지 플래그
+        tap_detected = False
+        tap_position = None
+        
         if temp_detection['found'] and temp_detection['frame_corners'] is not None:
             # 토끼 중심 좌표도 함께 전달
             rabbit_center = temp_detection.get('center')
@@ -166,6 +170,14 @@ def handle_video_frame(data):
             )
             if collision_result['collision']:
                 hand_collision_data = collision_result
+            
+            # 검지 탭 감지
+            index_tips = hand_result.get('index_finger_tips', [])
+            if hand_detector.check_index_tap(index_tips, temp_detection['frame_corners']):
+                tap_detected = True
+                # 터치 위치 저장 (첫 번째 검지)
+                if index_tips:
+                    tap_position = index_tips[0]
         
         # 형태 탐지 (손 충돌 데이터 포함)
         detection_result = shape_detector.detect(frame, hand_collision_data)
@@ -174,29 +186,15 @@ def handle_video_frame(data):
         result_frame = frame.copy()
         result_frame = shape_detector.apply_brightness_saturation(result_frame)
         
-        # 손 그리기 (선택적 - 디버그용)
-        # if hand_result['hand_centers']:
-        #     result_frame = hand_detector.draw_hands(result_frame, hand_result['hand_centers'])
+        # 손가락 관절(랜드마크) 그리기
+        if hand_result['landmarks']:
+            result_frame = hand_detector.draw_landmarks(result_frame, hand_result['landmarks'])
         
-        # 오버레이 적용 (화면 밖으로 나가지 않았을 때만)
-        # 토끼 애니메이션은 원본 그대로 표시됨
-        if (detection_result['found'] and 
-            detection_result['frame_corners'] is not None and
-            not detection_result.get('is_pushed_off_screen', False)):
-            # 비디오 오버레이 (명도/채도 조정된 배경 위에)
-            result_frame = video_overlay.overlay(result_frame, detection_result['frame_corners'])
-            
-            # 디버그: 프레임 코너 그리기 (성능을 위해 주석 처리)
-            # corners = detection_result['frame_corners']
-            # for i in range(4):
-            #     pt1 = (int(corners[i][0]), int(corners[i][1]))
-            #     pt2 = (int(corners[(i + 1) % 4][0]), int(corners[(i + 1) % 4][1]))
-            #     cv2.line(result_frame, pt1, pt2, (0, 255, 0), 2)
-            # 
-            # # 중심점 표시
-            # center = detection_result['center']
-            # if center:
-            #     cv2.circle(result_frame, (int(center[0]), int(center[1])), 5, (0, 0, 255), -1)
+        # 비디오 오버레이 비활성화 - 3D 모델(Three.js)만 사용
+        # if (detection_result['found'] and 
+        #     detection_result['frame_corners'] is not None and
+        #     not detection_result.get('is_pushed_off_screen', False)):
+        #     result_frame = video_overlay.overlay(result_frame, detection_result['frame_corners'])
         
         # 결과 프레임을 Base64로 인코딩 (품질 70으로 낮춤 - 속도 향상)
         _, buffer = cv2.imencode('.jpg', result_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -215,11 +213,17 @@ def handle_video_frame(data):
                 'scale': detection_result['scale'],
                 'is_grabbed': detection_result.get('is_grabbed', False),
                 'is_pushed_off_screen': detection_result.get('is_pushed_off_screen', False),
-                'drag_offset': detection_result.get('drag_offset', (0, 0))
+                'drag_offset': detection_result.get('drag_offset', (0, 0)),
+                'is_flipped': video_overlay.is_flipped
             },
             'hands': {
                 'found': hand_result['hands_found'],
-                'count': len(hand_result['hand_centers'])
+                'count': len(hand_result['hand_centers']),
+                'index_tips': hand_result.get('index_finger_tips', []),
+                'tap_detected': tap_detected,
+                'tap_position': tap_position,
+                'palm_detected': hand_result.get('palm_detected', False),
+                'palm_center': hand_result.get('palm_center', None)
             }
         })
         

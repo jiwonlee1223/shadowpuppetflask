@@ -50,7 +50,23 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 웹캠 초기화
     initWebcam();
+    
+    // Three.js 3D 렌더러 초기화
+    initThreeRenderer();
 });
+
+/**
+ * Three.js 렌더러 초기화
+ */
+function initThreeRenderer() {
+    console.log('🎮 Three.js 렌더러 초기화 중...');
+    
+    // 렌더러 생성
+    threeRenderer = new ThreeRenderer('threejs-container');
+    
+    // GLTF 모델 로드 (scene.gltf - 다양한 애니메이션 포함)
+    threeRenderer.loadModel('/static/models/scene.gltf');
+}
 
 /**
  * 웹캠 초기화
@@ -294,6 +310,36 @@ function handleProcessedFrame(data) {
     // 탐지 정보 업데이트
     const detection = data.detection;
     
+    // 검지 탭 감지 → 해당 위치로 뛰어가기!
+    const hands = data.hands || {};
+    const screenWidth = 640;
+    const screenHeight = 480;
+    
+    if (threeRenderer && threeRenderer.isLoaded && hands.tap_detected && hands.tap_position) {
+        // 화면 좌표를 0~1 비율로 변환
+        const normalizedX = hands.tap_position[0] / screenWidth;
+        const normalizedY = hands.tap_position[1] / screenHeight;
+        
+        console.log(`👆 검지 탭! 화면 위치: (${normalizedX.toFixed(2)}, ${normalizedY.toFixed(2)})`);
+        
+        // 고양이에게 해당 위치로 이동하라고 알림
+        threeRenderer.runToPosition(normalizedX, normalizedY);
+    }
+    
+    // 손바닥 상태 업데이트 (매 프레임)
+    if (threeRenderer && threeRenderer.isLoaded) {
+        if (hands.palm_detected && hands.palm_center) {
+            const normalizedX = hands.palm_center[0] / screenWidth;
+            const normalizedY = hands.palm_center[1] / screenHeight;
+            
+            // 손바닥 보임 → 상태 업데이트
+            threeRenderer.updatePalmState(true, normalizedX, normalizedY);
+        } else {
+            // 손바닥 안 보임 → 상태 업데이트
+            threeRenderer.updatePalmState(false);
+        }
+    }
+    
     // 잠금 상태 표시
     const lockStatus = document.getElementById('lock-status');
     if (detection.is_grabbed) {
@@ -312,22 +358,24 @@ function handleProcessedFrame(data) {
     
     // 탐지 정보 표시
     const detectionInfo = document.getElementById('detection-info');
-    const hands = data.hands || {};
     
     if (detection.is_pushed_off_screen) {
         detectionInfo.innerHTML = '<strong class="text-warning">📤 화면 밖으로 밀려남!</strong>';
         detectionInfo.className = 'text-warning';
+        // 모델 숨기기
+        if (threeRenderer) threeRenderer.setVisible(false);
     } else if (detection.found) {
         const score = detection.score ? detection.score.toFixed(3) : 'N/A';
         const angle = detection.angle ? detection.angle.toFixed(1) : 'N/A';
         const scale = detection.scale ? detection.scale.toFixed(2) : 'N/A';
         const handInfo = hands.found ? ` | 👋 손: ${hands.count}개` : '';
+        const modelInfo = threeRenderer && threeRenderer.isLoaded ? ' | 🐱 3D 모델' : '';
         
         detectionInfo.innerHTML = `
             <strong>탐지됨</strong> | 
             점수: ${score} | 
             각도: ${angle}° | 
-            스케일: ${scale}x${handInfo}
+            스케일: ${scale}x${handInfo}${modelInfo}
         `;
         detectionInfo.className = 'text-success';
     } else {
@@ -367,6 +415,11 @@ window.addEventListener('beforeunload', () => {
     if (webcam && webcam.srcObject) {
         const tracks = webcam.srcObject.getTracks();
         tracks.forEach(track => track.stop());
+    }
+    
+    // Three.js 정리
+    if (threeRenderer) {
+        threeRenderer.dispose();
     }
 });
 

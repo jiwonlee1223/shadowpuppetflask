@@ -35,8 +35,19 @@ class VideoOverlay:
         self.current_frame_idx = 0
         self.current_video_frame = None
         
+        # 좌우 반전 상태
+        self.is_flipped = False
+        
         # 첫 프레임 로드
         self._read_next_frame()
+    
+    def toggle_flip(self):
+        """
+        좌우 반전 토글
+        """
+        self.is_flipped = not self.is_flipped
+        flip_status = "반전됨" if self.is_flipped else "원본"
+        print(f"🔄 비디오 좌우 반전: {flip_status}")
     
     def _read_next_frame(self):
         """
@@ -74,6 +85,11 @@ class VideoOverlay:
         # 다음 프레임 읽기
         self._read_next_frame()
         
+        # 현재 비디오 프레임 (좌우 반전 적용)
+        video_frame = self.current_video_frame.copy()
+        if self.is_flipped:
+            video_frame = cv2.flip(video_frame, 1)  # 1 = 좌우 반전
+        
         # 소스 좌표 (비디오의 4개 코너)
         src_pts = np.float32([
             [0, 0],
@@ -95,7 +111,7 @@ class VideoOverlay:
         # 비디오 프레임 워핑
         frame_h, frame_w = base_frame.shape[:2]
         warped_video = cv2.warpPerspective(
-            self.current_video_frame,
+            video_frame,
             transform_matrix,
             (frame_w, frame_h),
             flags=cv2.INTER_LINEAR,

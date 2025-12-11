@@ -65,6 +65,11 @@ class ShapeDetector:
         self.screen_width = 640  # 화면 너비 (초기값)
         self.screen_height = 480  # 화면 높이 (초기값)
         
+        # 즉시 시작 모드 (형태 탐지 없이 바로 토끼 표시)
+        self.instant_start_mode = True  # 시작과 함께 토끼 표시
+        self.default_scale = 0.8  # 기본 스케일
+        self.default_position = None  # 기본 위치 (화면 중앙, 나중에 설정)
+        
         # 부드러운 추적을 위한 EMA
         self.smoothed_cx = None
         self.smoothed_cy = None
@@ -176,7 +181,7 @@ class ShapeDetector:
             self.is_grabbed = True
             self.grab_hand_position = hand_position
             self.last_hand_position = hand_position
-            print("🐰 토끼를 잡았습니다!")
+            # print("🐰 토끼를 잡았습니다!")  # 로그 비활성화
         else:
             # 이미 잡고 있을 때 - 손의 이동량만큼 토끼 이동
             if self.last_hand_position:
@@ -200,7 +205,7 @@ class ShapeDetector:
             self.is_grabbed = False
             self.grab_hand_position = None
             self.last_hand_position = None
-            print("🐰 토끼를 놓았습니다!")
+            # print("🐰 토끼를 놓았습니다!")  # 로그 비활성화
     
     def update_drag_physics(self):
         """
@@ -256,6 +261,10 @@ class ShapeDetector:
         
         # 드래그 물리 업데이트
         self.update_drag_physics()
+        
+        # 즉시 시작 모드: 형태 탐지 없이 화면 중앙에 토끼 표시
+        if self.instant_start_mode:
+            return self._get_instant_start_result(frame.shape)
         # 그레이스케일 변환
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
@@ -511,6 +520,79 @@ class ShapeDetector:
             'frame_corners': None,
             'is_locked': self.is_locked,
             'is_permanently_active': self.is_permanently_active,
+            'drag_offset': (self.drag_offset_x, self.drag_offset_y),
+            'is_grabbed': self.is_grabbed,
+            'is_pushed_off_screen': self.is_pushed_off_screen
+        }
+    
+    def _get_instant_start_result(self, frame_shape):
+        """
+        즉시 시작 모드 결과 반환 (형태 탐지 없이 화면 중앙에 토끼 표시)
+        
+        Args:
+            frame_shape: 프레임 크기 (height, width, channels)
+        
+        Returns:
+            dict: 탐지 정보
+        """
+        frame_h, frame_w = frame_shape[:2]
+        
+        # 화면 중앙 위치
+        cx = frame_w / 2
+        cy = frame_h / 2
+        
+        # 스무딩 초기화 (처음 한 번만)
+        if self.smoothed_cx is None:
+            self.smoothed_cx = cx
+            self.smoothed_cy = cy
+            self.smoothed_angle = 0
+            self.smoothed_scale = self.default_scale
+            self.smoothed_frame_cx = cx
+            self.smoothed_frame_cy = cy
+        
+        # 프레임 크기 계산 (참조 이미지 비율 사용)
+        ref_h, ref_w = self.reference_image.shape[:2]
+        rabbit_x, rabbit_y, rabbit_w, rabbit_h = cv2.boundingRect(self.reference_contour)
+        
+        video_frame_w = rabbit_w + 207 + 200  # 좌 + 토끼 + 우
+        video_frame_h = rabbit_h + 100 + 38   # 상 + 토끼 + 하
+        
+        # 스케일 적용
+        scaled_frame_w = video_frame_w * self.smoothed_scale
+        scaled_frame_h = video_frame_h * self.smoothed_scale
+        
+        half_w = scaled_frame_w / 2
+        half_h = scaled_frame_h / 2
+        
+        # 4개 코너 (회전 없음, 중앙 위치)
+        base_cx = self.smoothed_frame_cx
+        base_cy = self.smoothed_frame_cy
+        
+        corners = [
+            [base_cx - half_w, base_cy - half_h],  # 좌상단
+            [base_cx + half_w, base_cy - half_h],  # 우상단
+            [base_cx + half_w, base_cy + half_h],  # 우하단
+            [base_cx - half_w, base_cy + half_h],  # 좌하단
+        ]
+        
+        # 드래그 오프셋 적용
+        dragged_corners = []
+        for corner in corners:
+            dragged_corners.append([
+                corner[0] + self.drag_offset_x,
+                corner[1] + self.drag_offset_y
+            ])
+        
+        return {
+            'found': True,
+            'contour': self.reference_contour,
+            'center': (base_cx + self.drag_offset_x, base_cy + self.drag_offset_y),
+            'angle': 0,
+            'scale': self.smoothed_scale,
+            'score': 0,
+            'frame_corners': dragged_corners,
+            'is_locked': True,
+            'is_permanently_active': True,
             'drag_offset': (self.drag_offset_x, self.drag_offset_y),
             'is_grabbed': self.is_grabbed,
             'is_pushed_off_screen': self.is_pushed_off_screen
