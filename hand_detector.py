@@ -34,6 +34,12 @@ class HandDetector:
         self.last_index_finger_inside = False  # 이전 프레임에서 검지가 안에 있었는지
         self.tap_cooldown = 0  # 탭 쿨다운 (연속 탭 방지)
         
+        # 핀치 감지용 변수
+        self.pinch_active = False  # 핀치 중인지
+        self.pinch_start_distance = 0  # 핀치 시작 시 거리
+        self.pinch_threshold = 50  # 핀치 시작 임계 거리 (픽셀)
+        self.current_pinch_scale = 1.0  # 현재 핀치 스케일
+        
     def detect(self, frame):
         """
         프레임에서 손 탐지 (MediaPipe 기반)
@@ -90,7 +96,11 @@ class HandDetector:
         palm_detected = False
         palm_center = None
         
-        if results.multi_hand_landmarks:
+        # 핀치 감지 (손가락 상태도 확인)
+        pinch_result = self._detect_pinch(landmarks_list, frame.shape[1], frame.shape[0])
+        
+        # 핀치가 활성화되지 않았을 때만 손바닥 감지 (상호 배제)
+        if not pinch_result['active'] and results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 if self._is_palm_open(hand_landmarks):
                     palm_detected = True
@@ -98,13 +108,24 @@ class HandDetector:
                     palm_center = self._get_palm_center(hand_landmarks, frame.shape[1], frame.shape[0])
                     break
         
+        # 현재 감지된 제스처 로그 (디버그용)
+        gesture = "없음"
+        if pinch_result['active']:
+            gesture = f"👌 핀치 (스케일: {pinch_result['scale']:.2f}x)"
+        elif palm_detected:
+            gesture = "🖐️ 손바닥"
+        
         return {
             'hands_found': len(hand_centers) > 0,
             'hand_centers': hand_centers,
             'index_finger_tips': index_finger_tips,
             'landmarks': landmarks_list,
             'palm_detected': palm_detected,
-            'palm_center': palm_center
+            'palm_center': palm_center,
+            'pinch_active': pinch_result['active'],
+            'pinch_scale': pinch_result['scale'],
+            'pinch_distance': pinch_result['distance'],
+            'gesture': gesture
         }
     
     def _is_palm_open(self, hand_landmarks):
@@ -170,6 +191,98 @@ class HandDetector:
         palm_y = (landmarks[5].y + landmarks[9].y + landmarks[13].y + landmarks[17].y) / 4
         
         return (int(palm_x * width), int(palm_y * height))
+    
+    def _detect_pinch(self, landmarks_list, width, height):
+        """
+        핀치 제스처 감지 (엄지-검지 거리로 스케일 조절)
+        
+        핀치 조건:
+        1. 엄지와 검지 끝이 가까움 (50px 이하)
+        2. 나머지 손가락(중지, 약지, 새끼) 중 최소 2개가 접혀있음
+        → 손바닥을 펴고 있을 때는 핀치로 인식되지 않음!
+        
+        Args:
+            landmarks_list: MediaPipe 손 랜드마크 리스트
+            width: 프레임 너비
+            height: 프레임 높이
+        
+        Returns:
+            dict: {
+                'active': bool - 핀치 활성 상태
+                'scale': float - 스케일 값 (1.0 기준)
+                'distance': float - 엄지-검지 거리 (픽셀)
+            }
+        """
+        if not landmarks_list:
+            # 손이 없으면 핀치 해제
+            if self.pinch_active:
+                print("👌 핀치 해제 (손 없음)")
+            self.pinch_active = False
+            return {'active': False, 'scale': 1.0, 'distance': 0}
+        
+        # 첫 번째 손 사용
+        hand_landmarks = landmarks_list[0]
+        landmarks = hand_landmarks.landmark
+        
+        # 엄지 끝 (Landmark 4)
+        thumb_tip = landmarks[4]
+        thumb_x = thumb_tip.x * width
+        thumb_y = thumb_tip.y * height
+        
+        # 검지 끝 (Landmark 8)
+        index_tip = landmarks[8]
+        index_x = index_tip.x * width
+        index_y = index_tip.y * height
+        
+        # 엄지-검지 거리 계산
+        dx = thumb_x - index_x
+        dy = thumb_y - index_y
+        distance = np.sqrt(dx * dx + dy * dy)
+        
+        # 나머지 손가락 상태 확인 (중지, 약지, 새끼)
+        # 손가락이 접혀있으면 TIP의 y가 PIP의 y보다 큼 (아래쪽)
+        middle_folded = landmarks[12].y > landmarks[10].y  # 중지
+        ring_folded = landmarks[16].y > landmarks[14].y    # 약지
+        pinky_folded = landmarks[20].y > landmarks[18].y   # 새끼
+        
+        folded_count = sum([middle_folded, ring_folded, pinky_folded])
+        
+        # 핀치 조건: 엄지-검지 가깝고 + 나머지 손가락 중 2개 이상 접혀있음
+        is_pinch_gesture = distance < self.pinch_threshold and folded_count >= 2
+        
+        # 핀치 시작
+        if is_pinch_gesture:
+            if not self.pinch_active:
+                # 핀치 시작!
+                self.pinch_active = True
+                self.pinch_start_distance = distance
+                self.current_pinch_scale = 1.0
+                print(f"👌 핀치 시작! 거리: {distance:.1f}px, 접힌 손가락: {folded_count}개")
+        else:
+            # 핀치 중이면 스케일 계산 (손가락 상태와 관계없이 계속)
+            if self.pinch_active:
+                # 거리 변화에 따른 스케일 계산
+                # 거리가 멀어지면 확대, 가까워지면 축소
+                # 기준: 100px = 2배, 200px = 3배, ...
+                scale_factor = 1.0 + (distance - self.pinch_threshold) / 100.0
+                self.current_pinch_scale = max(0.3, min(5.0, scale_factor))  # 0.3 ~ 5.0 제한
+        
+        # 핀치 비활성화 조건: 너무 멀어지거나 손바닥을 완전히 폄
+        if self.pinch_active:
+            # 조건 1: 거리가 너무 멀어짐
+            if distance > 300:
+                print(f"👌 핀치 해제! (거리 초과) 최종 스케일: {self.current_pinch_scale:.2f}")
+                self.pinch_active = False
+            # 조건 2: 모든 손가락이 펴짐 (손바닥 제스처로 전환)
+            elif folded_count == 0:
+                print(f"👌 핀치 해제! (손바닥으로 전환) 최종 스케일: {self.current_pinch_scale:.2f}")
+                self.pinch_active = False
+        
+        return {
+            'active': self.pinch_active,
+            'scale': self.current_pinch_scale if self.pinch_active else 1.0,
+            'distance': distance
+        }
     
     def check_index_tap(self, index_finger_tips, rabbit_corners):
         """

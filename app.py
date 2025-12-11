@@ -223,7 +223,10 @@ def handle_video_frame(data):
                 'tap_detected': tap_detected,
                 'tap_position': tap_position,
                 'palm_detected': hand_result.get('palm_detected', False),
-                'palm_center': hand_result.get('palm_center', None)
+                'palm_center': hand_result.get('palm_center', None),
+                'pinch_active': hand_result.get('pinch_active', False),
+                'pinch_scale': hand_result.get('pinch_scale', 1.0),
+                'pinch_distance': hand_result.get('pinch_distance', 0)
             }
         })
         

@@ -48,6 +48,17 @@ class ThreeRenderer {
         this.palmCooldown = 0;          // 손바닥 감지 쿨다운
         this.isPalmVisible = false;     // 현재 손바닥이 보이는지
         this.wasOnPalm = false;         // 손바닥 위에 있었는지
+        this.palmSleepTimer = null;     // 손바닥 위 3초 타이머
+        this.isSleeping = false;        // 잠자는 중인지
+        
+        // 콜백 함수
+        this.onSleepStart = null;       // 잠들기 시작 콜백
+        this.onSleepEnd = null;         // 잠에서 깨기 콜백
+        
+        // 핀치 스케일
+        this.pinchScale = 1.0;          // 핀치로 조절되는 스케일
+        this.targetPinchScale = 1.0;    // 목표 핀치 스케일 (부드러운 전환용)
+        this.isPinchActive = false;     // 핀치 활성화 상태
         
         // 초기화
         this.init();
@@ -60,7 +71,7 @@ class ThreeRenderer {
         // 컨테이너 크기 (이미지와 동일하게)
         const outputImage = document.getElementById('output-image');
         let width = this.container.clientWidth || 640;
-        let height = this.container.clientHeight || 480;
+        let height = this.container.clientHeight || 360;  // 16:9 비율
         
         // 이미지가 있으면 그 크기 사용
         if (outputImage && outputImage.clientWidth > 0) {
@@ -143,8 +154,8 @@ class ThreeRenderer {
             <div>애니메이션: <span id="debug-anim-name">-</span></div>
             <div>상태: <span id="debug-state">대기</span></div>
             <div>위치: <span id="debug-position">-</span></div>
-            <div>손바닥 보임: <span id="debug-palm-visible">❌</span></div>
-            <div>손바닥 위: <span id="debug-on-palm">❌</span></div>
+            <div>제스처: <span id="debug-gesture">-</span></div>
+            <div>핀치 스케일: <span id="debug-pinch-scale">1.00x</span></div>
         `;
         document.body.appendChild(debugPanel);
         
@@ -158,12 +169,15 @@ class ThreeRenderer {
         const animName = document.getElementById('debug-anim-name');
         const state = document.getElementById('debug-state');
         const position = document.getElementById('debug-position');
-        const palmVisible = document.getElementById('debug-palm-visible');
-        const onPalm = document.getElementById('debug-on-palm');
+        const gestureEl = document.getElementById('debug-gesture');
+        const pinchScaleEl = document.getElementById('debug-pinch-scale');
         
         if (animName) animName.textContent = this.currentAnimName || '-';
         if (state) {
-            if (this.isRunning) {
+            if (this.isPinchActive) {
+                state.textContent = '👌 크기 조절 중';
+                state.style.color = '#00ffff';
+            } else if (this.isRunning) {
                 state.textContent = this.isPalmTarget ? '🖐️ 손바닥으로 이동' : '👆 탭 위치로 이동';
                 state.style.color = '#ffff00';
             } else if (this.wasOnPalm) {
@@ -177,13 +191,21 @@ class ThreeRenderer {
         if (position) {
             position.textContent = `(${this.modelPosition.x.toFixed(1)}, ${this.modelPosition.y.toFixed(1)})`;
         }
-        if (palmVisible) {
-            palmVisible.textContent = this.isPalmVisible ? '✅' : '❌';
-            palmVisible.style.color = this.isPalmVisible ? '#00ff00' : '#ff6666';
+        if (gestureEl) {
+            if (this.isPinchActive) {
+                gestureEl.textContent = '👌 핀치';
+                gestureEl.style.color = '#00ffff';
+            } else if (this.isPalmVisible) {
+                gestureEl.textContent = '🖐️ 손바닥';
+                gestureEl.style.color = '#ff66ff';
+            } else {
+                gestureEl.textContent = '-';
+                gestureEl.style.color = '#888888';
+            }
         }
-        if (onPalm) {
-            onPalm.textContent = this.wasOnPalm ? '✅' : '❌';
-            onPalm.style.color = this.wasOnPalm ? '#00ff00' : '#ff6666';
+        if (pinchScaleEl) {
+            pinchScaleEl.textContent = `${this.pinchScale.toFixed(2)}x`;
+            pinchScaleEl.style.color = this.isPinchActive ? '#00ffff' : '#ffffff';
         }
     }
     
@@ -376,12 +398,20 @@ class ThreeRenderer {
         // 디버그 UI 업데이트
         this.updateDebugUI();
         
-        // 피벗 위치/회전 업데이트
+        // 핀치 스케일 부드럽게 적용
+        if (this.isPinchActive) {
+            this.pinchScale += (this.targetPinchScale - this.pinchScale) * 0.15;
+        }
+        
+        // 피벗 위치/회전/스케일 업데이트
         if (this.pivot) {
             // 피벗 위치 직접 설정
             this.pivot.position.x = this.modelPosition.x;
             this.pivot.position.y = this.modelPosition.y;
             this.pivot.position.z = this.modelPosition.z;
+            
+            // 핀치 스케일 적용
+            this.pivot.scale.setScalar(this.pinchScale);
             
             // 회전 처리
             let targetRotation;
@@ -557,8 +587,54 @@ class ThreeRenderer {
             if (wasPalmVisible && this.wasOnPalm) {
                 // 손바닥 위에 있다가 손바닥이 사라짐 → IdleA로 전환
                 console.log('🖐️ 손바닥 사라짐 → IdleA로 전환');
+                this.stopSleeping();  // 잠자기 중지 (타이머 취소 + 소리 정지)
                 this.playAnimation('IdleA', 0.5);
                 this.wasOnPalm = false;
+            }
+        }
+    }
+    
+    /**
+     * 😴 손바닥 위 3초 후 잠자기 타이머 시작
+     */
+    startSleepTimer() {
+        // 기존 타이머 취소
+        if (this.palmSleepTimer) {
+            clearTimeout(this.palmSleepTimer);
+        }
+        
+        console.log('⏰ 3초 후 잠들기 타이머 시작...');
+        this.palmSleepTimer = setTimeout(() => {
+            if (this.wasOnPalm && !this.isRunning) {
+                console.log('😴 3초 경과! Sleeping 애니메이션 전환');
+                this.playAnimation('Sleeping', 0.5);
+                this.isSleeping = true;
+                
+                // 잠들기 시작 콜백 호출
+                if (this.onSleepStart) {
+                    this.onSleepStart();
+                }
+            }
+        }, 3000);
+    }
+    
+    /**
+     * 😴 잠자기 중지 (타이머 취소 + 콜백 호출)
+     */
+    stopSleeping() {
+        // 타이머 취소
+        if (this.palmSleepTimer) {
+            clearTimeout(this.palmSleepTimer);
+            this.palmSleepTimer = null;
+        }
+        
+        // 잠자는 중이었다면 콜백 호출
+        if (this.isSleeping) {
+            console.log('😺 잠에서 깨어남!');
+            this.isSleeping = false;
+            
+            if (this.onSleepEnd) {
+                this.onSleepEnd();
             }
         }
     }
@@ -630,12 +706,30 @@ class ThreeRenderer {
                 console.log('🖐️ 손바닥에 도착! IdleB 상태 (손바닥 사라질 때까지 유지)');
                 this.wasOnPalm = true;  // 손바닥 위에 있음!
                 this.isPalmTarget = false;
+                
+                // 3초 후 Sleeping 전환 타이머 시작
+                this.startSleepTimer();
             } else {
                 // 일반 이동: IdleA로 전환
                 this.playAnimation('IdleA', 0.3);
                 console.log('😺 도착! Idle 상태로 대기');
             }
         }
+    }
+    
+    /**
+     * 👌 핀치 스케일 업데이트
+     * @param {boolean} isActive - 핀치 활성화 여부
+     * @param {number} scale - 핀치 스케일 (1.0 기준)
+     */
+    updatePinchScale(isActive, scale) {
+        this.isPinchActive = isActive;
+        
+        if (isActive) {
+            // 핀치 활성화: 목표 스케일 설정
+            this.targetPinchScale = scale;
+        }
+        // 핀치 비활성화 시 현재 스케일 유지 (부드럽게 고정)
     }
     
     /**

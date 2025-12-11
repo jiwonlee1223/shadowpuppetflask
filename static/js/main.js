@@ -25,6 +25,10 @@ let processingFrame = false;  // 서버 처리 중 플래그
 let frameSkipCounter = 0;     // 프레임 스킵 카운터
 const FRAME_SKIP = 1;         // 1 = 모든 프레임, 2 = 2프레임마다 1번, 3 = 3프레임마다 1번
 
+// 사운드
+let meowSounds = [];
+let meowSleepingSound = null;
+
 /**
  * 초기화
  */
@@ -53,6 +57,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Three.js 3D 렌더러 초기화
     initThreeRenderer();
+    
+    // 사운드 초기화
+    initSounds();
 });
 
 /**
@@ -69,6 +76,63 @@ function initThreeRenderer() {
 }
 
 /**
+ * 사운드 초기화
+ */
+function initSounds() {
+    console.log('🔊 사운드 초기화 중...');
+    
+    // 여러 야옹 소리 로드
+    const soundFiles = ['meow.mp3', 'meow2.mp3', 'meow3.mp3'];
+    soundFiles.forEach(file => {
+        const sound = new Audio(`/static/sounds/${file}`);
+        sound.volume = 0.5;  // 볼륨 50%
+        meowSounds.push(sound);
+    });
+    
+    // 잠자는 소리 로드 (루프 재생)
+    meowSleepingSound = new Audio('/static/sounds/meow-purring.mp3');
+    meowSleepingSound.volume = 0.5;
+    meowSleepingSound.loop = true;  // 반복 재생
+    
+    console.log(`🔊 ${meowSounds.length}개의 사운드 + 잠자는 소리 로드 완료`);
+    
+    // Three.js 렌더러에 잠자기 콜백 연결
+    setupSleepCallbacks();
+}
+
+/**
+ * 잠자기 콜백 설정
+ */
+function setupSleepCallbacks() {
+    // threeRenderer가 초기화될 때까지 대기
+    const checkRenderer = setInterval(() => {
+        if (threeRenderer) {
+            clearInterval(checkRenderer);
+            
+            // 잠들기 시작 시 소리 재생
+            threeRenderer.onSleepStart = () => {
+                console.log('🔊 잠자는 소리 재생 시작');
+                if (meowSleepingSound) {
+                    meowSleepingSound.currentTime = 0;
+                    meowSleepingSound.play().catch(e => console.warn('잠자는 소리 재생 실패:', e));
+                }
+            };
+            
+            // 잠에서 깰 때 소리 정지
+            threeRenderer.onSleepEnd = () => {
+                console.log('🔊 잠자는 소리 정지');
+                if (meowSleepingSound) {
+                    meowSleepingSound.pause();
+                    meowSleepingSound.currentTime = 0;
+                }
+            };
+            
+            console.log('🔊 잠자기 콜백 연결 완료');
+        }
+    }, 100);
+}
+
+/**
  * 웹캠 초기화
  */
 async function initWebcam() {
@@ -77,7 +141,7 @@ async function initWebcam() {
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 width: { ideal: 640 },   // 1280 → 640으로 낮춤 (2배 빠름)
-                height: { ideal: 480 },  // 720 → 480으로 낮춤
+                height: { ideal: 360 },  // 16:9 비율 (720 → 360으로 낮춤)
                 facingMode: 'user'
             }
         });
@@ -313,7 +377,7 @@ function handleProcessedFrame(data) {
     // 검지 탭 감지 → 해당 위치로 뛰어가기!
     const hands = data.hands || {};
     const screenWidth = 640;
-    const screenHeight = 480;
+    const screenHeight = 360;  // 16:9 비율
     
     if (threeRenderer && threeRenderer.isLoaded && hands.tap_detected && hands.tap_position) {
         // 화면 좌표를 0~1 비율로 변환
@@ -324,6 +388,14 @@ function handleProcessedFrame(data) {
         
         // 고양이에게 해당 위치로 이동하라고 알림
         threeRenderer.runToPosition(normalizedX, normalizedY);
+        
+        // 야옹 소리 랜덤 재생
+        if (meowSounds.length > 0) {
+            const randomIndex = Math.floor(Math.random() * meowSounds.length);
+            const sound = meowSounds[randomIndex];
+            sound.currentTime = 0;  // 처음부터 재생
+            sound.play().catch(e => console.warn('사운드 재생 실패:', e));
+        }
     }
     
     // 손바닥 상태 업데이트 (매 프레임)
@@ -337,6 +409,13 @@ function handleProcessedFrame(data) {
         } else {
             // 손바닥 안 보임 → 상태 업데이트
             threeRenderer.updatePalmState(false);
+        }
+        
+        // 👌 핀치 스케일 업데이트
+        if (hands.pinch_active) {
+            threeRenderer.updatePinchScale(true, hands.pinch_scale);
+        } else {
+            threeRenderer.updatePinchScale(false, 1.0);
         }
     }
     
